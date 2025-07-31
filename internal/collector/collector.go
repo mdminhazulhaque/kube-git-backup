@@ -131,27 +131,36 @@ func (kc *KubernetesCollector) shouldIncludeResource(resourceType string) bool {
 
 // shouldIncludeNamespace checks if a namespace should be included
 func (kc *KubernetesCollector) shouldIncludeNamespace(namespace string) bool {
-	// If no specific namespaces configured, include all
-	if len(kc.config.Kubernetes.Namespaces) == 0 {
-		return true
-	}
-
-	for _, ns := range kc.config.Kubernetes.Namespaces {
-		if ns == namespace {
-			return true
+	// Check exclude list first (explicit exclusions)
+	for _, excluded := range kc.config.Kubernetes.ExcludeNamespaces {
+		if excluded == namespace {
+			return false
 		}
 	}
-	return false
+
+	// If include list is specified, only include those namespaces
+	if len(kc.config.Kubernetes.IncludeNamespaces) > 0 {
+		for _, included := range kc.config.Kubernetes.IncludeNamespaces {
+			if included == namespace {
+				return true
+			}
+		}
+		return false
+	}
+
+	// If no include list specified, include all (except excluded ones)
+	return true
 }
 
 // Namespace collection
 func (kc *KubernetesCollector) collectNamespaces(ctx context.Context) ([]Resource, error) {
+	var resources []Resource
+
 	namespaces, err := kc.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	var resources []Resource
 	for _, ns := range namespaces.Items {
 		if kc.shouldIncludeNamespace(ns.Name) {
 			resources = append(resources, Resource{
@@ -163,6 +172,7 @@ func (kc *KubernetesCollector) collectNamespaces(ctx context.Context) ([]Resourc
 			})
 		}
 	}
+
 	return resources, nil
 }
 
@@ -170,40 +180,20 @@ func (kc *KubernetesCollector) collectNamespaces(ctx context.Context) ([]Resourc
 func (kc *KubernetesCollector) collectDeployments(ctx context.Context) ([]Resource, error) {
 	var resources []Resource
 
-	if len(kc.config.Kubernetes.Namespaces) == 0 {
-		// Collect from all namespaces
-		deployments, err := kc.clientset.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for _, deploy := range deployments.Items {
-			if kc.shouldIncludeNamespace(deploy.Namespace) {
-				resources = append(resources, Resource{
-					APIVersion: "apps/v1",
-					Kind:       "Deployment",
-					Namespace:  deploy.Namespace,
-					Name:       deploy.Name,
-					Object:     &deploy,
-				})
-			}
-		}
-	} else {
-		// Collect from specific namespaces
-		for _, ns := range kc.config.Kubernetes.Namespaces {
-			deployments, err := kc.clientset.AppsV1().Deployments(ns).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				log.Printf("Failed to list deployments in namespace %s: %v", ns, err)
-				continue
-			}
-			for _, deploy := range deployments.Items {
-				resources = append(resources, Resource{
-					APIVersion: "apps/v1",
-					Kind:       "Deployment",
-					Namespace:  deploy.Namespace,
-					Name:       deploy.Name,
-					Object:     &deploy,
-				})
-			}
+	deployments, err := kc.clientset.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, dep := range deployments.Items {
+		if kc.shouldIncludeNamespace(dep.Namespace) {
+			resources = append(resources, Resource{
+				APIVersion: "apps/v1",
+				Kind:       "Deployment",
+				Namespace:  dep.Namespace,
+				Name:       dep.Name,
+				Object:     &dep,
+			})
 		}
 	}
 
@@ -214,38 +204,20 @@ func (kc *KubernetesCollector) collectDeployments(ctx context.Context) ([]Resour
 func (kc *KubernetesCollector) collectDaemonSets(ctx context.Context) ([]Resource, error) {
 	var resources []Resource
 
-	if len(kc.config.Kubernetes.Namespaces) == 0 {
-		daemonsets, err := kc.clientset.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for _, ds := range daemonsets.Items {
-			if kc.shouldIncludeNamespace(ds.Namespace) {
-				resources = append(resources, Resource{
-					APIVersion: "apps/v1",
-					Kind:       "DaemonSet",
-					Namespace:  ds.Namespace,
-					Name:       ds.Name,
-					Object:     &ds,
-				})
-			}
-		}
-	} else {
-		for _, ns := range kc.config.Kubernetes.Namespaces {
-			daemonsets, err := kc.clientset.AppsV1().DaemonSets(ns).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				log.Printf("Failed to list daemonsets in namespace %s: %v", ns, err)
-				continue
-			}
-			for _, ds := range daemonsets.Items {
-				resources = append(resources, Resource{
-					APIVersion: "apps/v1",
-					Kind:       "DaemonSet",
-					Namespace:  ds.Namespace,
-					Name:       ds.Name,
-					Object:     &ds,
-				})
-			}
+	daemonsets, err := kc.clientset.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	
+	for _, ds := range daemonsets.Items {
+		if kc.shouldIncludeNamespace(ds.Namespace) {
+			resources = append(resources, Resource{
+				APIVersion: "apps/v1",
+				Kind:       "DaemonSet",
+				Namespace:  ds.Namespace,
+				Name:       ds.Name,
+				Object:     &ds,
+			})
 		}
 	}
 
@@ -256,38 +228,20 @@ func (kc *KubernetesCollector) collectDaemonSets(ctx context.Context) ([]Resourc
 func (kc *KubernetesCollector) collectStatefulSets(ctx context.Context) ([]Resource, error) {
 	var resources []Resource
 
-	if len(kc.config.Kubernetes.Namespaces) == 0 {
-		statefulsets, err := kc.clientset.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for _, sts := range statefulsets.Items {
-			if kc.shouldIncludeNamespace(sts.Namespace) {
-				resources = append(resources, Resource{
-					APIVersion: "apps/v1",
-					Kind:       "StatefulSet",
-					Namespace:  sts.Namespace,
-					Name:       sts.Name,
-					Object:     &sts,
-				})
-			}
-		}
-	} else {
-		for _, ns := range kc.config.Kubernetes.Namespaces {
-			statefulsets, err := kc.clientset.AppsV1().StatefulSets(ns).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				log.Printf("Failed to list statefulsets in namespace %s: %v", ns, err)
-				continue
-			}
-			for _, sts := range statefulsets.Items {
-				resources = append(resources, Resource{
-					APIVersion: "apps/v1",
-					Kind:       "StatefulSet",
-					Namespace:  sts.Namespace,
-					Name:       sts.Name,
-					Object:     &sts,
-				})
-			}
+	statefulsets, err := kc.clientset.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	
+	for _, sts := range statefulsets.Items {
+		if kc.shouldIncludeNamespace(sts.Namespace) {
+			resources = append(resources, Resource{
+				APIVersion: "apps/v1",
+				Kind:       "StatefulSet",
+				Namespace:  sts.Namespace,
+				Name:       sts.Name,
+				Object:     &sts,
+			})
 		}
 	}
 
@@ -298,38 +252,20 @@ func (kc *KubernetesCollector) collectStatefulSets(ctx context.Context) ([]Resou
 func (kc *KubernetesCollector) collectServices(ctx context.Context) ([]Resource, error) {
 	var resources []Resource
 
-	if len(kc.config.Kubernetes.Namespaces) == 0 {
-		services, err := kc.clientset.CoreV1().Services("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for _, svc := range services.Items {
-			if kc.shouldIncludeNamespace(svc.Namespace) {
-				resources = append(resources, Resource{
-					APIVersion: "v1",
-					Kind:       "Service",
-					Namespace:  svc.Namespace,
-					Name:       svc.Name,
-					Object:     &svc,
-				})
-			}
-		}
-	} else {
-		for _, ns := range kc.config.Kubernetes.Namespaces {
-			services, err := kc.clientset.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				log.Printf("Failed to list services in namespace %s: %v", ns, err)
-				continue
-			}
-			for _, svc := range services.Items {
-				resources = append(resources, Resource{
-					APIVersion: "v1",
-					Kind:       "Service",
-					Namespace:  svc.Namespace,
-					Name:       svc.Name,
-					Object:     &svc,
-				})
-			}
+	services, err := kc.clientset.CoreV1().Services("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	
+	for _, svc := range services.Items {
+		if kc.shouldIncludeNamespace(svc.Namespace) {
+			resources = append(resources, Resource{
+				APIVersion: "v1",
+				Kind:       "Service",
+				Namespace:  svc.Namespace,
+				Name:       svc.Name,
+				Object:     &svc,
+			})
 		}
 	}
 
@@ -340,40 +276,20 @@ func (kc *KubernetesCollector) collectServices(ctx context.Context) ([]Resource,
 func (kc *KubernetesCollector) collectConfigMaps(ctx context.Context) ([]Resource, error) {
 	var resources []Resource
 
-	if len(kc.config.Kubernetes.Namespaces) == 0 {
-		configmaps, err := kc.clientset.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for _, cm := range configmaps.Items {
-			if kc.shouldIncludeNamespace(cm.Namespace) && cm.Name != "kube-root-ca.crt" {
-				resources = append(resources, Resource{
-					APIVersion: "v1",
-					Kind:       "ConfigMap",
-					Namespace:  cm.Namespace,
-					Name:       cm.Name,
-					Object:     &cm,
-				})
-			}
-		}
-	} else {
-		for _, ns := range kc.config.Kubernetes.Namespaces {
-			configmaps, err := kc.clientset.CoreV1().ConfigMaps(ns).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				log.Printf("Failed to list configmaps in namespace %s: %v", ns, err)
-				continue
-			}
-			for _, cm := range configmaps.Items {
-				if cm.Name != "kube-root-ca.crt" {
-					resources = append(resources, Resource{
-						APIVersion: "v1",
-						Kind:       "ConfigMap",
-						Namespace:  cm.Namespace,
-						Name:       cm.Name,
-						Object:     &cm,
-					})
-				}
-			}
+	configmaps, err := kc.clientset.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	
+	for _, cm := range configmaps.Items {
+		if kc.shouldIncludeNamespace(cm.Namespace) && cm.Name != "kube-root-ca.crt" {
+			resources = append(resources, Resource{
+				APIVersion: "v1",
+				Kind:       "ConfigMap",
+				Namespace:  cm.Namespace,
+				Name:       cm.Name,
+				Object:     &cm,
+			})
 		}
 	}
 
@@ -384,38 +300,26 @@ func (kc *KubernetesCollector) collectConfigMaps(ctx context.Context) ([]Resourc
 func (kc *KubernetesCollector) collectSecrets(ctx context.Context) ([]Resource, error) {
 	var resources []Resource
 
-	if len(kc.config.Kubernetes.Namespaces) == 0 {
-		secrets, err := kc.clientset.CoreV1().Secrets("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for _, secret := range secrets.Items {
-			if kc.shouldIncludeNamespace(secret.Namespace) {
-				resources = append(resources, Resource{
-					APIVersion: "v1",
-					Kind:       "Secret",
-					Namespace:  secret.Namespace,
-					Name:       secret.Name,
-					Object:     &secret,
-				})
-			}
-		}
-	} else {
-		for _, ns := range kc.config.Kubernetes.Namespaces {
-			secrets, err := kc.clientset.CoreV1().Secrets(ns).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				log.Printf("Failed to list secrets in namespace %s: %v", ns, err)
+	secrets, err := kc.clientset.CoreV1().Secrets("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	
+	for _, secret := range secrets.Items {
+		if kc.shouldIncludeNamespace(secret.Namespace) {
+			// Skip service account tokens and other system secrets
+			if secret.Type == "kubernetes.io/service-account-token" ||
+				secret.Type == "helm.sh/release.v1" {
 				continue
 			}
-			for _, secret := range secrets.Items {
-				resources = append(resources, Resource{
-					APIVersion: "v1",
-					Kind:       "Secret",
-					Namespace:  secret.Namespace,
-					Name:       secret.Name,
-					Object:     &secret,
-				})
-			}
+			
+			resources = append(resources, Resource{
+				APIVersion: "v1",
+				Kind:       "Secret",
+				Namespace:  secret.Namespace,
+				Name:       secret.Name,
+				Object:     &secret,
+			})
 		}
 	}
 
@@ -426,52 +330,35 @@ func (kc *KubernetesCollector) collectSecrets(ctx context.Context) ([]Resource, 
 func (kc *KubernetesCollector) collectIngresses(ctx context.Context) ([]Resource, error) {
 	var resources []Resource
 
-	if len(kc.config.Kubernetes.Namespaces) == 0 {
-		ingresses, err := kc.clientset.NetworkingV1().Ingresses("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for _, ing := range ingresses.Items {
-			if kc.shouldIncludeNamespace(ing.Namespace) {
-				resources = append(resources, Resource{
-					APIVersion: "networking.k8s.io/v1",
-					Kind:       "Ingress",
-					Namespace:  ing.Namespace,
-					Name:       ing.Name,
-					Object:     &ing,
-				})
-			}
-		}
-	} else {
-		for _, ns := range kc.config.Kubernetes.Namespaces {
-			ingresses, err := kc.clientset.NetworkingV1().Ingresses(ns).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				log.Printf("Failed to list ingresses in namespace %s: %v", ns, err)
-				continue
-			}
-			for _, ing := range ingresses.Items {
-				resources = append(resources, Resource{
-					APIVersion: "networking.k8s.io/v1",
-					Kind:       "Ingress",
-					Namespace:  ing.Namespace,
-					Name:       ing.Name,
-					Object:     &ing,
-				})
-			}
+	ingresses, err := kc.clientset.NetworkingV1().Ingresses("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	
+	for _, ing := range ingresses.Items {
+		if kc.shouldIncludeNamespace(ing.Namespace) {
+			resources = append(resources, Resource{
+				APIVersion: "networking.k8s.io/v1",
+				Kind:       "Ingress",
+				Namespace:  ing.Namespace,
+				Name:       ing.Name,
+				Object:     &ing,
+			})
 		}
 	}
 
 	return resources, nil
 }
 
-// PersistentVolume collection (cluster-scoped)
+// PersistentVolume collection
 func (kc *KubernetesCollector) collectPersistentVolumes(ctx context.Context) ([]Resource, error) {
+	var resources []Resource
+
 	pvs, err := kc.clientset.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	var resources []Resource
 	for _, pv := range pvs.Items {
 		resources = append(resources, Resource{
 			APIVersion: "v1",
@@ -481,6 +368,7 @@ func (kc *KubernetesCollector) collectPersistentVolumes(ctx context.Context) ([]
 			Object:     &pv,
 		})
 	}
+
 	return resources, nil
 }
 
@@ -488,53 +376,36 @@ func (kc *KubernetesCollector) collectPersistentVolumes(ctx context.Context) ([]
 func (kc *KubernetesCollector) collectPersistentVolumeClaims(ctx context.Context) ([]Resource, error) {
 	var resources []Resource
 
-	if len(kc.config.Kubernetes.Namespaces) == 0 {
-		pvcs, err := kc.clientset.CoreV1().PersistentVolumeClaims("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for _, pvc := range pvcs.Items {
-			if kc.shouldIncludeNamespace(pvc.Namespace) {
-				resources = append(resources, Resource{
-					APIVersion: "v1",
-					Kind:       "PersistentVolumeClaim",
-					Namespace:  pvc.Namespace,
-					Name:       pvc.Name,
-					Object:     &pvc,
-				})
-			}
-		}
-	} else {
-		for _, ns := range kc.config.Kubernetes.Namespaces {
-			pvcs, err := kc.clientset.CoreV1().PersistentVolumeClaims(ns).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				log.Printf("Failed to list pvcs in namespace %s: %v", ns, err)
-				continue
-			}
-			for _, pvc := range pvcs.Items {
-				resources = append(resources, Resource{
-					APIVersion: "v1",
-					Kind:       "PersistentVolumeClaim",
-					Namespace:  pvc.Namespace,
-					Name:       pvc.Name,
-					Object:     &pvc,
-				})
-			}
+	pvcs, err := kc.clientset.CoreV1().PersistentVolumeClaims("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	
+	for _, pvc := range pvcs.Items {
+		if kc.shouldIncludeNamespace(pvc.Namespace) {
+			resources = append(resources, Resource{
+				APIVersion: "v1",
+				Kind:       "PersistentVolumeClaim",
+				Namespace:  pvc.Namespace,
+				Name:       pvc.Name,
+				Object:     &pvc,
+			})
 		}
 	}
 
 	return resources, nil
 }
 
-// StorageClass collection (cluster-scoped)
+// StorageClass collection
 func (kc *KubernetesCollector) collectStorageClasses(ctx context.Context) ([]Resource, error) {
-	scs, err := kc.clientset.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
+	var resources []Resource
+
+	storageClasses, err := kc.clientset.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	var resources []Resource
-	for _, sc := range scs.Items {
+	for _, sc := range storageClasses.Items {
 		resources = append(resources, Resource{
 			APIVersion: "storage.k8s.io/v1",
 			Kind:       "StorageClass",
@@ -543,6 +414,7 @@ func (kc *KubernetesCollector) collectStorageClasses(ctx context.Context) ([]Res
 			Object:     &sc,
 		})
 	}
+
 	return resources, nil
 }
 
@@ -550,38 +422,20 @@ func (kc *KubernetesCollector) collectStorageClasses(ctx context.Context) ([]Res
 func (kc *KubernetesCollector) collectServiceAccounts(ctx context.Context) ([]Resource, error) {
 	var resources []Resource
 
-	if len(kc.config.Kubernetes.Namespaces) == 0 {
-		sas, err := kc.clientset.CoreV1().ServiceAccounts("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for _, sa := range sas.Items {
-			if kc.shouldIncludeNamespace(sa.Namespace) {
-				resources = append(resources, Resource{
-					APIVersion: "v1",
-					Kind:       "ServiceAccount",
-					Namespace:  sa.Namespace,
-					Name:       sa.Name,
-					Object:     &sa,
-				})
-			}
-		}
-	} else {
-		for _, ns := range kc.config.Kubernetes.Namespaces {
-			sas, err := kc.clientset.CoreV1().ServiceAccounts(ns).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				log.Printf("Failed to list serviceaccounts in namespace %s: %v", ns, err)
-				continue
-			}
-			for _, sa := range sas.Items {
-				resources = append(resources, Resource{
-					APIVersion: "v1",
-					Kind:       "ServiceAccount",
-					Namespace:  sa.Namespace,
-					Name:       sa.Name,
-					Object:     &sa,
-				})
-			}
+	serviceAccounts, err := kc.clientset.CoreV1().ServiceAccounts("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	
+	for _, sa := range serviceAccounts.Items {
+		if kc.shouldIncludeNamespace(sa.Namespace) && sa.Name != "default" {
+			resources = append(resources, Resource{
+				APIVersion: "v1",
+				Kind:       "ServiceAccount",
+				Namespace:  sa.Namespace,
+				Name:       sa.Name,
+				Object:     &sa,
+			})
 		}
 	}
 
@@ -592,38 +446,20 @@ func (kc *KubernetesCollector) collectServiceAccounts(ctx context.Context) ([]Re
 func (kc *KubernetesCollector) collectRoles(ctx context.Context) ([]Resource, error) {
 	var resources []Resource
 
-	if len(kc.config.Kubernetes.Namespaces) == 0 {
-		roles, err := kc.clientset.RbacV1().Roles("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for _, role := range roles.Items {
-			if kc.shouldIncludeNamespace(role.Namespace) {
-				resources = append(resources, Resource{
-					APIVersion: "rbac.authorization.k8s.io/v1",
-					Kind:       "Role",
-					Namespace:  role.Namespace,
-					Name:       role.Name,
-					Object:     &role,
-				})
-			}
-		}
-	} else {
-		for _, ns := range kc.config.Kubernetes.Namespaces {
-			roles, err := kc.clientset.RbacV1().Roles(ns).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				log.Printf("Failed to list roles in namespace %s: %v", ns, err)
-				continue
-			}
-			for _, role := range roles.Items {
-				resources = append(resources, Resource{
-					APIVersion: "rbac.authorization.k8s.io/v1",
-					Kind:       "Role",
-					Namespace:  role.Namespace,
-					Name:       role.Name,
-					Object:     &role,
-				})
-			}
+	roles, err := kc.clientset.RbacV1().Roles("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	
+	for _, role := range roles.Items {
+		if kc.shouldIncludeNamespace(role.Namespace) {
+			resources = append(resources, Resource{
+				APIVersion: "rbac.authorization.k8s.io/v1",
+				Kind:       "Role",
+				Namespace:  role.Namespace,
+				Name:       role.Name,
+				Object:     &role,
+			})
 		}
 	}
 
@@ -634,81 +470,73 @@ func (kc *KubernetesCollector) collectRoles(ctx context.Context) ([]Resource, er
 func (kc *KubernetesCollector) collectRoleBindings(ctx context.Context) ([]Resource, error) {
 	var resources []Resource
 
-	if len(kc.config.Kubernetes.Namespaces) == 0 {
-		roleBindings, err := kc.clientset.RbacV1().RoleBindings("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for _, rb := range roleBindings.Items {
-			if kc.shouldIncludeNamespace(rb.Namespace) {
-				resources = append(resources, Resource{
-					APIVersion: "rbac.authorization.k8s.io/v1",
-					Kind:       "RoleBinding",
-					Namespace:  rb.Namespace,
-					Name:       rb.Name,
-					Object:     &rb,
-				})
-			}
-		}
-	} else {
-		for _, ns := range kc.config.Kubernetes.Namespaces {
-			roleBindings, err := kc.clientset.RbacV1().RoleBindings(ns).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				log.Printf("Failed to list rolebindings in namespace %s: %v", ns, err)
-				continue
-			}
-			for _, rb := range roleBindings.Items {
-				resources = append(resources, Resource{
-					APIVersion: "rbac.authorization.k8s.io/v1",
-					Kind:       "RoleBinding",
-					Namespace:  rb.Namespace,
-					Name:       rb.Name,
-					Object:     &rb,
-				})
-			}
+	roleBindings, err := kc.clientset.RbacV1().RoleBindings("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	
+	for _, rb := range roleBindings.Items {
+		if kc.shouldIncludeNamespace(rb.Namespace) {
+			resources = append(resources, Resource{
+				APIVersion: "rbac.authorization.k8s.io/v1",
+				Kind:       "RoleBinding",
+				Namespace:  rb.Namespace,
+				Name:       rb.Name,
+				Object:     &rb,
+			})
 		}
 	}
 
 	return resources, nil
 }
 
-// ClusterRole collection (cluster-scoped)
+// ClusterRole collection
 func (kc *KubernetesCollector) collectClusterRoles(ctx context.Context) ([]Resource, error) {
+	var resources []Resource
+
 	clusterRoles, err := kc.clientset.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	var resources []Resource
 	for _, cr := range clusterRoles.Items {
-		resources = append(resources, Resource{
-			APIVersion: "rbac.authorization.k8s.io/v1",
-			Kind:       "ClusterRole",
-			Namespace:  "",
-			Name:       cr.Name,
-			Object:     &cr,
-		})
+		// Skip system cluster roles
+		if cr.Name != "admin" && cr.Name != "edit" && cr.Name != "view" && !isSystemClusterRole(cr.Name) {
+			resources = append(resources, Resource{
+				APIVersion: "rbac.authorization.k8s.io/v1",
+				Kind:       "ClusterRole",
+				Namespace:  "",
+				Name:       cr.Name,
+				Object:     &cr,
+			})
+		}
 	}
+
 	return resources, nil
 }
 
-// ClusterRoleBinding collection (cluster-scoped)
+// ClusterRoleBinding collection
 func (kc *KubernetesCollector) collectClusterRoleBindings(ctx context.Context) ([]Resource, error) {
+	var resources []Resource
+
 	clusterRoleBindings, err := kc.clientset.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	var resources []Resource
 	for _, crb := range clusterRoleBindings.Items {
-		resources = append(resources, Resource{
-			APIVersion: "rbac.authorization.k8s.io/v1",
-			Kind:       "ClusterRoleBinding",
-			Namespace:  "",
-			Name:       crb.Name,
-			Object:     &crb,
-		})
+		// Skip system cluster role bindings
+		if !isSystemClusterRoleBinding(crb.Name) {
+			resources = append(resources, Resource{
+				APIVersion: "rbac.authorization.k8s.io/v1",
+				Kind:       "ClusterRoleBinding",
+				Namespace:  "",
+				Name:       crb.Name,
+				Object:     &crb,
+			})
+		}
 	}
+
 	return resources, nil
 }
 
@@ -716,40 +544,63 @@ func (kc *KubernetesCollector) collectClusterRoleBindings(ctx context.Context) (
 func (kc *KubernetesCollector) collectNetworkPolicies(ctx context.Context) ([]Resource, error) {
 	var resources []Resource
 
-	if len(kc.config.Kubernetes.Namespaces) == 0 {
-		networkPolicies, err := kc.clientset.NetworkingV1().NetworkPolicies("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for _, np := range networkPolicies.Items {
-			if kc.shouldIncludeNamespace(np.Namespace) {
-				resources = append(resources, Resource{
-					APIVersion: "networking.k8s.io/v1",
-					Kind:       "NetworkPolicy",
-					Namespace:  np.Namespace,
-					Name:       np.Name,
-					Object:     &np,
-				})
-			}
-		}
-	} else {
-		for _, ns := range kc.config.Kubernetes.Namespaces {
-			networkPolicies, err := kc.clientset.NetworkingV1().NetworkPolicies(ns).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				log.Printf("Failed to list networkpolicies in namespace %s: %v", ns, err)
-				continue
-			}
-			for _, np := range networkPolicies.Items {
-				resources = append(resources, Resource{
-					APIVersion: "networking.k8s.io/v1",
-					Kind:       "NetworkPolicy",
-					Namespace:  np.Namespace,
-					Name:       np.Name,
-					Object:     &np,
-				})
-			}
+	networkPolicies, err := kc.clientset.NetworkingV1().NetworkPolicies("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	
+	for _, np := range networkPolicies.Items {
+		if kc.shouldIncludeNamespace(np.Namespace) {
+			resources = append(resources, Resource{
+				APIVersion: "networking.k8s.io/v1",
+				Kind:       "NetworkPolicy",
+				Namespace:  np.Namespace,
+				Name:       np.Name,
+				Object:     &np,
+			})
 		}
 	}
 
 	return resources, nil
+}
+
+// Helper functions
+func isSystemClusterRole(name string) bool {
+	systemPrefixes := []string{
+		"system:",
+		"kubernetes-",
+		"k8s-",
+		"cilium",
+		"coredns",
+		"kube-dns",
+		"metrics-server",
+	}
+	
+	for _, prefix := range systemPrefixes {
+		if len(name) >= len(prefix) && name[:len(prefix)] == prefix {
+			return true
+		}
+	}
+	
+	return false
+}
+
+func isSystemClusterRoleBinding(name string) bool {
+	systemPrefixes := []string{
+		"system:",
+		"kubernetes-",
+		"k8s-",
+		"cilium",
+		"coredns",
+		"kube-dns", 
+		"metrics-server",
+	}
+	
+	for _, prefix := range systemPrefixes {
+		if len(name) >= len(prefix) && name[:len(prefix)] == prefix {
+			return true
+		}
+	}
+	
+	return false
 }

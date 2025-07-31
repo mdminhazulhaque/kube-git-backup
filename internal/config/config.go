@@ -31,9 +31,10 @@ type GitConfig struct {
 
 // KubernetesConfig holds Kubernetes-related configuration
 type KubernetesConfig struct {
-	IncludeResources []string
-	ExcludeResources []string
-	Namespaces       []string // Empty means all namespaces
+	IncludeResources    []string
+	ExcludeResources    []string
+	IncludeNamespaces   []string // Empty means all namespaces
+	ExcludeNamespaces   []string // Namespaces to exclude
 }
 
 // SanitizerConfig holds YAML sanitization configuration
@@ -91,12 +92,14 @@ func Load() (*Config, error) {
 	// Kubernetes configuration
 	includeStr := getEnvOrDefault("INCLUDE_RESOURCES", "deployments,daemonsets,statefulsets,services,configmaps,secrets,ingresses,namespaces,roles,rolebindings,clusterroles,clusterrolebindings,serviceaccounts,persistentvolumes,persistentvolumeclaims,storageclasses,networkpolicies")
 	excludeStr := getEnvOrDefault("EXCLUDE_RESOURCES", "pods,events,endpoints,replicasets")
-	namespacesStr := os.Getenv("NAMESPACES")
+	includeNamespacesStr := os.Getenv("INCLUDE_NAMESPACES")
+	excludeNamespacesStr := getEnvOrDefault("EXCLUDE_NAMESPACES", "kube-system,default,kube-node-lease")
 
 	cfg.Kubernetes = KubernetesConfig{
-		IncludeResources: parseCommaSeparated(includeStr),
-		ExcludeResources: parseCommaSeparated(excludeStr),
-		Namespaces:       parseCommaSeparated(namespacesStr),
+		IncludeResources:  parseCommaSeparated(includeStr),
+		ExcludeResources:  parseCommaSeparated(excludeStr),
+		IncludeNamespaces: parseCommaSeparated(includeNamespacesStr),
+		ExcludeNamespaces: parseCommaSeparated(excludeNamespacesStr),
 	}
 
 	// Sanitizer configuration - using static defaults

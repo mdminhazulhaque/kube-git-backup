@@ -49,8 +49,12 @@ spec:
           value: "deployments,daemonsets,statefulsets,services,configmaps,secrets,ingresses,namespaces,roles,rolebindings,clusterroles,clusterrolebindings,serviceaccounts,persistentvolumes,persistentvolumeclaims,storageclasses,networkpolicies"
         - name: EXCLUDE_RESOURCES
           value: "pods,events,endpoints,replicasets"
-        # - name: NAMESPACES
-        #   value: "default,kube-system"  # Leave empty for all namespaces
+        
+        # Namespace Configuration
+        # - name: INCLUDE_NAMESPACES
+        #   value: "production,staging"  # Include specific namespaces
+        - name: EXCLUDE_NAMESPACES
+          value: "kube-system,default,kube-node-lease"  # Exclude system namespaces
         
         # YAML Sanitization
         - name: STRIP_FIELDS

@@ -77,7 +77,8 @@ All configuration is done via environment variables:
 |----------|-------------|---------|----------|
 | `INCLUDE_RESOURCES` | Comma-separated list of resource types to include | All supported types | ❌ |
 | `EXCLUDE_RESOURCES` | Comma-separated list of resource types to exclude | `pods,events,endpoints,replicasets` | ❌ |
-| `NAMESPACES` | Comma-separated list of namespaces (empty = all) | - | ❌ |
+| `INCLUDE_NAMESPACES` | Comma-separated list of namespaces to include (empty = all) | - | ❌ |
+| `EXCLUDE_NAMESPACES` | Comma-separated list of namespaces to exclude | `kube-system,default,kube-node-lease` | ❌ |
 
 ### YAML Sanitization
 | Variable | Description | Default | Required |
