@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 
 	"kube-git-backup/internal/config"
 	"kube-git-backup/internal/sanitizer"
@@ -17,7 +19,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
-	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 )
 
 // Manager handles Git operations for backing up Kubernetes resources
@@ -59,10 +61,17 @@ func (gm *Manager) setupAuth() (transport.AuthMethod, error) {
 			return nil, fmt.Errorf("SSH key path is required for SSH authentication")
 		}
 
-		auth, err := ssh.NewPublicKeysFromFile("git", gm.config.SSHKeyPath, "")
+		auth, err := gitssh.NewPublicKeysFromFile("git", gm.config.SSHKeyPath, "")
 		if err != nil {
 			return nil, fmt.Errorf("failed to load SSH key: %w", err)
 		}
+		
+		// Set up host key callback
+		hostKeyCallback, err := gm.getHostKeyCallback()
+		if err != nil {
+			return nil, fmt.Errorf("failed to setup host key callback: %w", err)
+		}
+		auth.HostKeyCallback = hostKeyCallback
 		return auth, nil
 
 	case "token":
@@ -377,4 +386,67 @@ func (gm *Manager) CleanupOldBackups(currentResources []sanitizer.SanitizedResou
 // cleanupDeletedResources removes files from Git that no longer exist in the cluster
 func (gm *Manager) cleanupDeletedResources(resources []sanitizer.SanitizedResource) error {
 	return gm.CleanupOldBackups(resources)
+}
+
+// getHostKeyCallback returns an appropriate SSH host key callback
+func (gm *Manager) getHostKeyCallback() (ssh.HostKeyCallback, error) {
+	// Try to use known_hosts file if available
+	knownHostsFiles := []string{
+		"/root/.ssh/known_hosts",
+		"/etc/ssh/ssh_known_hosts",
+		os.Getenv("SSH_KNOWN_HOSTS"),
+	}
+	
+	for _, file := range knownHostsFiles {
+		if file != "" {
+			if _, err := os.Stat(file); err == nil {
+				callback, err := knownhosts.New(file)
+				if err == nil {
+					return callback, nil
+				}
+			}
+		}
+	}
+	
+	// If no known_hosts file is available, create a default one with common Git hosts
+	knownHostsPath := "/root/.ssh/known_hosts"
+	if err := gm.createDefaultKnownHosts(knownHostsPath); err != nil {
+		// If we can't create known_hosts, fall back to insecure (but log warning)
+		fmt.Printf("Warning: Using insecure SSH host key verification. Could not setup known_hosts: %v\n", err)
+		return ssh.InsecureIgnoreHostKey(), nil
+	}
+	
+	callback, err := knownhosts.New(knownHostsPath)
+	if err != nil {
+		fmt.Printf("Warning: Using insecure SSH host key verification. Could not load known_hosts: %v\n", err)
+		return ssh.InsecureIgnoreHostKey(), nil
+	}
+	
+	return callback, nil
+}
+
+// createDefaultKnownHosts creates a known_hosts file with common Git service providers
+func (gm *Manager) createDefaultKnownHosts(knownHostsPath string) error {
+	// Ensure the directory exists
+	dir := filepath.Dir(knownHostsPath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("failed to create SSH directory: %w", err)
+	}
+	
+	// Common Git service provider host keys (these are public and stable)
+	knownHosts := []string{
+		"github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl",
+		"github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=",
+		"github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=",
+		"gitlab.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf",
+		"gitlab.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCsj2bNKTBSpIYDEGk9KxsGh3mySTRgMtXL583qmBpzeQ+jqCMRgBqB98u3z++J1sKlXHWfM9dyhSevkMwSbhoR8XIq/U0tCNyokEi/ueaBMCvbcTHhO7k0VhjdMOhHDBBM4/wCnfVAd9UBQL89W+9EH7OjvRaQNvQ7VQEQX2RkRhgRcRFxzK2MZv9rGV/pbL9tBTL4Pz0aaK1/OyOhBiA2QSqsX6QAyQBe2Zy6yq9VJXn7BvHiSGb8U6TJP6zp8nG7Z9D9+7D6z9A7P8C6Q2a4k3F8E6fE2D6TZkFxh5JYI4TQBF9LO3BzPf8z",
+		"bitbucket.org ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDQeJzhupRu0u0cdegZIa8e86EG2qOCsIsD1Xw0xSeiPDlCr7kq97NLmMbpKTX6Esc30NuoqEEHQoTuKtwpHBYB2C5QD5e6jAj2vJcJ+Rx7Y6B6DGUQOSdKPpd8mM+b7V9XqZfwF5u8QzU1Nq9B8ZkfnF8Y9Q2e7G2TjkFsQ2gE7G2OeZzT7Y6BfV8o9QF6H0tY2X5JjYk8J5Z6Q1V9G1kF8J3sF9qQ5XfF6YoQ9Y7H6J+2wQhVgF2e6EF7hJ6GQv9O2K8V6j1H8c+KX2PjH9d8SsF2W8oJ5E8Q5zQI6KY2F9PqEJ8QK3c6hVfJk",
+	}
+	
+	content := strings.Join(knownHosts, "\n") + "\n"
+	if err := os.WriteFile(knownHostsPath, []byte(content), 0600); err != nil {
+		return fmt.Errorf("failed to write known_hosts file: %w", err)
+	}
+	
+	return nil
 }

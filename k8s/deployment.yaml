@@ -18,7 +18,7 @@ spec:
       serviceAccountName: kube-git-backup
       containers:
       - name: kube-git-backup
-        image: ghcr.io/mdminhaz/kube-git-backup:latest
+        image: ghcr.io/mdminhazulhaque/kube-git-backup:latest
         imagePullPolicy: Always
         env:
         - name: GIT_REPOSITORY

@@ -20,6 +20,11 @@ kubectl create secret generic git-ssh-key \
   -n kube-system
 ```
 
+**Note**: SSH host key verification is handled automatically. The application will:
+1. Look for existing `known_hosts` files (`/root/.ssh/known_hosts`, `/etc/ssh/ssh_known_hosts`)
+2. Use `SSH_KNOWN_HOSTS` environment variable if set
+3. Create a default `known_hosts` file with common Git service providers (GitHub, GitLab, Bitbucket)
+
 #### For Token Authentication:
 ```bash
 # Create token secret

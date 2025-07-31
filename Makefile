@@ -4,7 +4,7 @@
 
 # Variables
 BINARY_NAME=kube-git-backup
-DOCKER_IMAGE=kube-git-backup
+DOCKER_IMAGE=ghcr.io/mdminhazulhaque/kube-git-backup
 DOCKER_TAG=latest
 NAMESPACE=kube-system
 
