@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-git-backup
+  namespace: kube-system
+  labels:
+    app: kube-git-backup
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-git-backup
+  template:
+    metadata:
+      labels:
+        app: kube-git-backup
+    spec:
+      serviceAccountName: kube-git-backup
+      containers:
+      - name: kube-git-backup
+        image: ghcr.io/mdminhaz/kube-git-backup:latest
+        imagePullPolicy: Always
+        env:
+        - name: GIT_REPOSITORY
+          value: git@github.com:Governful/kube-dump.git
+        - name: GIT_BRANCH
+          value: "main"
+        - name: GIT_AUTHOR_NAME
+          value: "Kube Git Backup"
+        - name: GIT_AUTHOR_EMAIL
+          value: "kube-backup@example.com"
+        - name: GIT_SSH_KEY_PATH
+          value: "/etc/ssh-key/id_rsa"
+        # Alternative for token auth:
+        # - name: GIT_TOKEN
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: git-token
+        #       key: token
+        
+        # Backup Configuration
+        - name: BACKUP_INTERVAL
+          value: "1h"
+        - name: WORK_DIR
+          value: "/tmp/kube-backup"
+        
+        # Resource Configuration
+        - name: INCLUDE_RESOURCES
+          value: "deployments,daemonsets,statefulsets,services,configmaps,secrets,ingresses,namespaces,roles,rolebindings,clusterroles,clusterrolebindings,serviceaccounts,persistentvolumes,persistentvolumeclaims,storageclasses,networkpolicies"
+        - name: EXCLUDE_RESOURCES
+          value: "pods,events,endpoints,replicasets"
+        # - name: NAMESPACES
+        #   value: "default,kube-system"  # Leave empty for all namespaces
+        
+        # YAML Sanitization
+        - name: STRIP_FIELDS
+          value: "metadata.uid,metadata.selfLink,metadata.resourceVersion,metadata.generation,metadata.creationTimestamp,metadata.annotations[kubectl.kubernetes.io/last-applied-configuration],status,spec.clusterIP,spec.clusterIPs,spec.ports[].nodePort"
+        
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        
+        volumeMounts:
+        - name: ssh-key
+          mountPath: /etc/ssh-key
+          readOnly: true
+        - name: tmp-volume
+          mountPath: /tmp
+      
+      volumes:
+      - name: ssh-key
+        secret:
+          secretName: git-ssh-key
+          defaultMode: 0600
+      - name: tmp-volume
+        emptyDir: {}
+      
+      # Security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      
+      # Node selection (optional)
+      # nodeSelector:
+      #   kubernetes.io/arch: amd64
+      
+      # Tolerations (optional)
+      # tolerations:
+      # - key: "node-role.kubernetes.io/master"
+      #   operator: "Exists"
+      #   effect: "NoSchedule"

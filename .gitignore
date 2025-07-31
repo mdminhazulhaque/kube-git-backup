@@ -1,0 +1,58 @@
+# Binaries
+kube-git-backup
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Environment variables
+.env
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Git backup working directory
+/tmp/kube-backup/
+
+# Docker files
+Dockerfile.dev
+
+# Kubernetes secrets (if accidentally created locally)
+secrets-local.yaml
+
+# Log files
+*.log
+
+# Build artifacts
+dist/
+build/
