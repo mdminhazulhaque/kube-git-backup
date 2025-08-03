@@ -52,38 +52,27 @@ kubectl apply -f k8s/deployment.yaml
 
 All configuration is done via environment variables:
 
-### Git Configuration
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
+| **Git Configuration** | | | |
 | `GIT_REPOSITORY` | Git repository URL | - | ✅ |
 | `GIT_BRANCH` | Git branch to use | `main` | ❌ |
 | `GIT_AUTHOR_NAME` | Git commit author name | `Kube Git Backup` | ❌ |
 | `GIT_AUTHOR_EMAIL` | Git commit author email | `kube-backup@example.com` | ❌ |
 | `GIT_SSH_KEY_PATH` | Path to SSH private key | `/root/.ssh/id_rsa` | ❌ |
 | `GIT_TOKEN` | Git access token | - | ❌ |
-
-**Note**: Authentication method is automatically detected based on the repository URL:
-- HTTPS URLs (`https://github.com/...`) → Token authentication
-- SSH URLs (`git@github.com:...`) → SSH key authentication
-
-### Backup Configuration
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
+| **Backup Settings** | | | |
 | `BACKUP_INTERVAL` | Backup interval (Go duration) | `1h` | ❌ |
 | `WORK_DIR` | Working directory for Git operations | `/tmp/kube-backup` | ❌ |
+| **Resource Filtering** | | | |
+| `INCLUDE_RESOURCES` | Resource types to include (comma-separated) | All supported types | ❌ |
+| `EXCLUDE_RESOURCES` | Resource types to exclude (comma-separated) | `pods,events,endpoints,replicasets` | ❌ |
+| `INCLUDE_NAMESPACES` | Namespaces to include (comma-separated, empty = all) | - | ❌ |
+| `EXCLUDE_NAMESPACES` | Namespaces to exclude (comma-separated) | `kube-system,default,kube-node-lease` | ❌ |
+| **YAML Processing** | | | |
+| `STRIP_FIELDS` | Field paths to remove (comma-separated) | See sanitizer defaults | ❌ |
 
-### Resource Configuration
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `INCLUDE_RESOURCES` | Comma-separated list of resource types to include | All supported types | ❌ |
-| `EXCLUDE_RESOURCES` | Comma-separated list of resource types to exclude | `pods,events,endpoints,replicasets` | ❌ |
-| `INCLUDE_NAMESPACES` | Comma-separated list of namespaces to include (empty = all) | - | ❌ |
-| `EXCLUDE_NAMESPACES` | Comma-separated list of namespaces to exclude | `kube-system,default,kube-node-lease` | ❌ |
-
-### YAML Sanitization
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `STRIP_FIELDS` | Comma-separated list of field paths to remove | See sanitizer defaults | ❌ |
+**Authentication**: Automatically detected based on repository URL (HTTPS → token, SSH → key)
 
 ## Repository Structure
 
