@@ -1,3 +1,5 @@
+![Image](https://repository-images.githubusercontent.com/1029881539/9d1c411f-d51c-40cb-819d-0dbb45e232ea)
+
 # Kube Git Backup
 
 A Go-based Kubernetes daemon that continuously runs inside Kubernetes clusters to collect all resources in YAML format, sanitize them, and push to a Git repository for backup and versioning.
