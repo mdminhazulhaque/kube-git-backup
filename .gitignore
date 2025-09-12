@@ -56,3 +56,4 @@ secrets-local.yaml
 # Build artifacts
 dist/
 build/
+vendor/
